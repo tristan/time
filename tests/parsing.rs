@@ -1565,6 +1565,18 @@ fn parse_first() -> time::Result<()> {
         .unwrap_err();
     assert_eq!(err, error::ParseFromDescription::InvalidComponent("period"));
 
+    let parsed = PrimitiveDateTime::parse(
+        "2021-01-02 10:20",
+        &FormatItem::First(&[
+            FormatItem::Compound(&fd::parse("[year]-[month]-[day]")?),
+            FormatItem::Compound(&fd::parse("[year]-[month]-[day] [hour]:[minute]")?),
+        ]),
+    )?;
+    assert_eq!(parsed.year(), 2021);
+    assert_eq!(parsed.month(), Month::January);
+    assert_eq!(parsed.day(), 2);
+    assert_eq!(parsed.hour(), 10);
+    assert_eq!(parsed.minute(), 20);
     Ok(())
 }
 

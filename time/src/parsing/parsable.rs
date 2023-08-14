@@ -48,6 +48,10 @@ mod sealed {
         /// This method can only be used to parse a complete value of a type. If any characters
         /// remain after parsing, an error will be returned.
         fn parse(&self, input: &[u8]) -> Result<Parsed, error::Parse> {
+            self.parse_default(input)
+        }
+
+        fn parse_default(&self, input: &[u8]) -> Result<Parsed, error::Parse> {
             let mut parsed = Parsed::new();
             if self.parse_into(input, &mut parsed)?.is_empty() {
                 Ok(parsed)
@@ -78,6 +82,41 @@ mod sealed {
         ) -> Result<DateTime<O>, error::Parse> {
             Ok(self.parse(input)?.try_into()?)
         }
+
+        /// Find the first item in items that parses and has no remaining characters.
+        fn parse_first(items: &[Self], input: &[u8]) -> Result<Parsed, error::Parse>
+        where
+            Self: Sized,
+        {
+            let mut parsed = Parsed::new();
+            let mut first_err = None;
+            for item in items.iter() {
+                match item.parse_into(input, &mut parsed) {
+                    Ok(remaining) => {
+                        if remaining.is_empty() {
+                            return Ok(parsed);
+                        } else if first_err.is_none() {
+                            first_err = Some(error::Parse::UnexpectedTrailingCharacters);
+                        }
+                    }
+                    Err(err) if first_err.is_none() => first_err = Some(err.into()),
+                    Err(_) => {}
+                }
+            }
+            match first_err {
+                Some(err) => Err(err),
+                None => {
+                    // Only possible if items is empty.
+                    // if input is also empty, just return the default Parsed.
+                    // otherwise there are training characters, so it's an error.
+                    if input.is_empty() {
+                        Ok(parsed)
+                    } else {
+                        Err(error::Parse::UnexpectedTrailingCharacters)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -89,6 +128,13 @@ impl sealed::Sealed for FormatItem<'_> {
         parsed: &mut Parsed,
     ) -> Result<&'a [u8], error::Parse> {
         Ok(parsed.parse_item(input, self)?)
+    }
+
+    fn parse(&self, input: &[u8]) -> Result<Parsed, error::Parse> {
+        match self {
+            FormatItem::First(items) => Self::parse_first(items, input),
+            _ => self.parse_default(input),
+        }
     }
 }
 
@@ -110,6 +156,13 @@ impl sealed::Sealed for OwnedFormatItem {
         parsed: &mut Parsed,
     ) -> Result<&'a [u8], error::Parse> {
         Ok(parsed.parse_item(input, self)?)
+    }
+
+    fn parse(&self, input: &[u8]) -> Result<Parsed, error::Parse> {
+        match self {
+            OwnedFormatItem::First(items) => Self::parse_first(items, input),
+            _ => self.parse_default(input),
+        }
     }
 }
 
